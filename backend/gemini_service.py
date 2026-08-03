@@ -3,97 +3,44 @@
 # ============================================
 
 import google.generativeai as genai
-from config import config
+from google.api_core.exceptions import GoogleAPIError
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class GeminiService:
-    """Сервис для работы с Google Gemini API"""
-    
     def __init__(self):
-        """Инициализация сервиса"""
-        # Устанавливаем API key
         genai.configure(api_key=config.GEMINI_API_KEY)
-        
-        # Создаем модель
-        self.model = genai.GenerativeModel(config.MODEL_NAME)
-    
-    def generate_recipes(self, ingredients: list) -> str:
-        """
-        Генерирует рецепты по списку ингредиентов
-        
-        Args:
-            ingredients (list): Список ингредиентов
-                Пример: ["яйцо", "масло", "мука"]
-        
-        Returns:
-            str: Сгенерированные рецепты
-        """
-        
-        # Формируем промпт (инструкция для AI)
+        # Настройка модели
+        self.model = genai.GenerativeModel(
+            model_name=config.MODEL_NAME,
+            generation_config={"response_mime_type": "application/json"}
+        )
+
+    def generate_recipes(self, ingredients: list) -> dict:
+        if not ingredients or not isinstance(ingredients, list):
+            raise ValueError("Ingredients must be a non-empty list.")
+
         ingredients_str = ", ".join(ingredients)
         prompt = f"""
-        Ты профессиональный шеф-повар. 
-        Дан список ингредиентов: {ingredients_str}
-        
-        Предложи 2-3 рецепта, которые можно приготовить из этих ингредиентов.
-        Для каждого рецепта указывай:
-        1. Название
-        2. Время приготовления
-        3. Пошаговые инструкции
-        4. Сложность (легко/средне/сложно)
+        You are a professional chef. Given these ingredients: {ingredients_str}.
+        Return a JSON array of 2 recipes in this structure:
+        [
+          {{
+            "title": "String",
+            "time": "String",
+            "difficulty": "Easy|Medium|Hard",
+            "steps": ["Step 1", "Step 2"]
+          }}
+        ]
         """
-        
-        # Отправляем запрос к AI и получаем ответ
-        response = self.model.generate_content(prompt)
-        
-        return response.text
-    
-    def answer_culinary_question(self, question: str) -> str:
-        """
-        Отвечает на вопросы о кулинарии
-        
-        Args:
-            question (str): Вопрос о кулинарии
-        
-        Returns:
-            str: Ответ от AI
-        """
-        
-        prompt = f"""
-        Ты опытный кулинар и эксперт по кухне.
-        Ответь на вопрос пользователя:
-        
-        {question}
-        
-        Дай практичный, понятный ответ.
-        """
-        
-        response = self.model.generate_content(prompt)
-        
-        return response.text
-    
-    def suggest_substitute(self, ingredient: str) -> str:
-        """
-        Предлагает замену для ингредиента
-        
-        Args:
-            ingredient (str): Ингредиент для замены
-        
-        Returns:
-            str: Варианты замены
-        """
-        
-        prompt = f"""
-        Предложи 3-4 замены для ингредиента: {ingredient}
-        
-        Для каждой замены указывай:
-        1. Название ингредиента
-        2. Как его использовать вместо оригинального
-        3. Как это повлияет на вкус блюда
-        """
-        
-        response = self.model.generate_content(prompt)
-        
-        return response.text
-
-# Создаем глобальный объект сервиса
-gemini_service = GeminiService()
+        try:
+            response = self.model.generate_content(prompt)
+            return {"success": True, "data": response.text}
+        except GoogleAPIError as e:
+            logger.error(f"Gemini API Error: {str(e)}")
+            return {"success": False, "error": "AI Service currently unavailable."}
+        except Exception as e:
+            logger.error(f"Unexpected Error: {str(e)}")
+            return {"success": False, "error": "An internal error occurred."}
